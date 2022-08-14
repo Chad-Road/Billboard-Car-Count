@@ -1,15 +1,39 @@
+"""This code has been striped and optimized to work on computers with limited
+power and processing capabilities (e.g. Raspberry Pi, Beagleboard, ODROID, etc.)
+
+This assumes you are streaming from a live video source, otherwise it's better
+to save the given file and run the object detection on the given machine
+
+Note on Cameras:
+Most USB cameras (webcams or similar) should work out-of-the-box on most 
+single board computers, however, cameras that plug directly into the 
+SBC may require picamera (rapsberry pi) or a similar libraryto get them 
+to work properly.
+
+CPU Power Note: 
+While this has been optimized to use as little processing power as possible,
+there are still many SBCs or microcontrollers with far too little poweer to have
+usable object detection"""
+
+
 import pandas as pd
-import numpy as np
 import cv2 as cv
 import math
 
-# car_haar_cascade = "C:\\Coding\\GitHub\\Billboard-Car-Count\\car_detection_haar.xml"
-traffic_video_one = "C:\\Coding\\GitHub\\Billboard-Car-Count\\media\\traffic_one.mp4"
-traffic_video_two = "C:\\Coding\\GitHub\\Billboard-Car-Count\\media\\traffic_two.mp4"
-traffic_video_three = "C:\\Coding\\GitHub\\Billboard-Car-Count\\media\\traffic_three.mp4"
-traffic_video_four = "C:\\Coding\\GitHub\\Billboard-Car-Count\\media\\traffic_four.mp4"
+# OpenCV automatically detect connected webcams and gives them an index number
+# If you have multiple cameras connected you may have to change
+video_capture_device_index = 0
+video_capture = cv.VideoCapture(video_capture_device_index)
 
-video_capture = cv.VideoCapture(traffic_video_four)
+# Test to make sure that opencv has connected to your camera
+# This will likely either work very easily or be virtually impossible
+# You should check 
+if video_capture:
+    print("Successfully connected to live camera")
+else:
+    print("Cannot connect to live camera")
+    exit()
+
 
 total_frames_count = video_capture.get(cv.CAP_PROP_FRAME_COUNT)
 frames_per_second = video_capture.get(cv.CAP_PROP_FPS)
@@ -22,39 +46,32 @@ frame_number = 0
 total_car_count = 0
 number_is_close_tolerance = 5
 
+
+# Line which if a centroid crosses, it is counted as a car
+count_line_height = 340
+
+# Sets minimum and maximum size to calculate contour centroid
+minimum_contour_size = 200
+maximum_contour_size = 1000
+
 # The numbers in set are property identifiers 3 = width, 4 = height
 # This sets video height and width to predetermined height and width
-video_height = 360
-video_width = 640
+# Not usually needed, but sometimes required for certain cameras/SBCs
+#     to work properly
+video_height = video_capture.get(cv.CAP_PROP_FRAME_HEIGHT)
+video_width = video_capture.get(cv.CAP_PROP_FRAME_WIDTH)
 video_capture.set(3, video_width)
 video_capture.set(4, video_height)
 
 
-#--- This is inlcluded to able to easily compare results with pre-build car haar cascade ---#
-###############################################################################################
-# video_result = cv.VideoWriter('video_result.mp4', 0x7634706d, 15.0, (video_width, video_height))
+# 0x7634706d is used to force opencv to use mp4 due to compatibility issues on certiain systems
+# Note: Most systems will require the 'isColor' parameter to match output color settings
+#    (e.g. color output "isColor" = True, grayscale output "isColor" = False)
+video_result = cv.VideoWriter('video_result_V2.mp4', 0x7634706d, frames_per_second, (video_width, video_height), isColor=True)
 
-# while True:
-#     return_val, captured_image = video_capture.read()
-
-#     if (type(captured_image) == type(None)):
-#         break
-
-#     to_grayscale = cv.cvtColor(captured_image, cv.COLOR_BGR2GRAY)
-
-#     car_detected = car_cascade_classifier.detectMultiScale(to_grayscale, 1.1, 2)
-
-#     for (x_cord, y_cord, width, height) in car_detected:
-#         cv.rectangle(captured_image, (x_cord, y_cord), (x_cord+width, y_cord+height), (0, 255, 255), 2)
-
-#     video_result.write(captured_image)
-# video_result.release()
-# cv.destroyAllWindows()
-########################################################################################################
-
-video_result = cv.VideoWriter('video_result_V2.mp4', 0x7634706d, 15.0, (video_width, video_height), isColor=True)
-
-background_subtractor = cv.createBackgroundSubtractorKNN()
+# This will have the largest affect on performance
+# In most cases MOG2 is the best option, but low power systems may require 'Frame Difference' instead
+background_subtractor = cv.createBackgroundSubtractorMOG2()
 
 while True:
     return_val, captured_image = video_capture.read()
@@ -95,15 +112,7 @@ while True:
                                             (0, 255, 0), 3)
 
         # Line which if a centroid crosses, it is counted as a car
-        count_line_height = 340
         count_line = cv.line(captured_image, (0, count_line_height), (640, count_line_height), (0, 0, 255), 6)
-
-        # Sets minimum size for counting of contour
-        minimum_contour_size = 200
-
-        # Sets maximum contour size, necessary for early stages of video while contours are computed
-        maximum_contour_size = 1000
-
 
         # Loop to cycle through all contours
         for i in range(len(contours)):
@@ -149,6 +158,7 @@ while True:
         frame_number += 1
 
         # cv.imshow('grayed blured', binary_image)
+
         # k = cv.waitKey(int(1000/frames_per_second)) & 0xff
         # if k == 27:
         #     break
